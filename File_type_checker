@@ -1,0 +1,47 @@
+
+#optmize ~~~~ Checking the metadata file type ~~~ # 
+
+import os
+
+def detect_csv(file_path):
+  """ This is for 
+    # Check file extension
+    file_extension = os.path.splitext(file_path)[-1].lower()
+    if file_extension != ".csv":
+        print("File does not have a .csv extension.")
+        return "Not a CSV"
+
+    try:
+        # Open the file and check if commas exist
+        with open(file_path, "r", encoding="utf-8") as f:
+            first_line = f.readline()
+            if "," in first_line:
+                print("File contains commas, likely a CSV.")
+
+                # Count delimiters in multiple lines
+                f.seek(0)  # Reset file pointer
+                delimiter_counts = [line.count(",") for line in f.readlines()[:5]]
+
+                # If the number of commas is consistent, it's structured as a CSV
+                if len(set(delimiter_counts)) == 1:
+                    print("Consistent delimiters detected. This is a valid CSV file.")
+                    return "CSV"
+                else:
+                    print("Inconsistent delimiter counts across rows. Check formatting.")
+                    return "Possibly Corrupt CSV"
+            else:
+                print("No commas found. This may not be a CSV file.")
+                return "Not a CSV"
+
+    except Exception as e:
+        print(f"Error reading file: {e}")
+        return "Unknown"
+
+file_path = r"C:\Applied Data Science test\XX50235metadata_v2.csv" #Insert fully input file path here
+file_type = detect_csv(file_path)
+print(f"Detected File Type: {file_type}")
+
+
+
+
+
