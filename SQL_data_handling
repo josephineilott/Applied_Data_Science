@@ -1,0 +1,242 @@
+#section~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+#section ~~~~~~~~~~~~~ Data handling in SQL ~~~~~~~~~~~~~~~~~#
+#section~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+
+import pandas as pd
+import sqlite3
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Path to CSV file
+csv_path = r"C:\XX50235metadata"
+
+# Connect to SQLite database (or create it if it doesn't exist)
+conn = sqlite3.connect("metadata_cleaned.db", timeout=30)
+cursor = conn.cursor() #Cursor object to execute SQL queries
+
+# CREATE metadata_raw TABLE with SQLite
+cursor.execute("DROP TABLE IF EXISTS metadata_raw") #Drops existing table if it exists to ensure clear re-creation
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS metadata_raw (
+    Accession TEXT PRIMARY KEY,
+    Country TEXT,
+    Region TEXT,
+    Year INTEGER,
+    Stx TEXT,
+    PT TEXT
+);
+""")
+
+# Function to Read CSV File with UTF-8 Encoding
+def open_file(location):
+    """ Opens the CSV file - Error handling if incorrect formatting """
+    try:
+        metadata_cleaned = pd.read_csv(location, delimiter=",", encoding="utf-8")  # FIXED: Encoding issue, specifying the comma delimiter
+        print("Got CSV data")
+        return metadata_cleaned
+    except FileNotFoundError:
+        print("Error: CSV file not found. Please check the file path.")
+        exit()
+    except pd.errors.ParserError:
+        print("Error: Could not parse CSV file. Check the file format.")
+        exit()
+        #If the file is missing or incorrectly formatted, print an error message and exits.
+
+# Calls open_file to load CSV data.
+metadata_cleaned = open_file(csv_path)
+
+# Display Dataset Info
+#print(metadata_cleaned.head())  # Display first few rows
+#print(metadata_cleaned.columns)  # Display column names
+#print(metadata_cleaned.shape)  # Display the dataset dimensions
+
+#optimize~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+#Optimize ~~~~~~~~~~~~~ Display basic information about the dataset~~~~~~~~~~~~~~~~#
+#optimize~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+
+# **Efficient Bulk Insert Using Pandas**
+def basic_metadata_information(location):
+    """ This function is for a visual inspection of the file type
+    1: Output first 10 rows
+    2: Provide column headers in SQL table
+    3: Total rows and columns in table
+    4: Column names, missing values per column, Unique values per column etc.
+
+    Results:
+    -    2874 rows and 2874 unique entries in the Accession field - Hence, these are all unique entries
+    -    PT and Stx fields have missing values that need to be handled.
+
+    Don't need all the lines of code...
+    """
+    metadata_cleaned = pd.read_csv(location, delimiter=",", encoding="utf-8")
+
+    #Inserts data into metadata_raw SQLite table
+    metadata_cleaned.to_sql("metadata_raw", conn, if_exists="append", index=False)
+    print("CSV data successfully imported into SQLite3!")
+
+    cursor.execute("PRAGMA TABLE_INFO(metadata_raw)")
+    columns_info = cursor.fetchall() #Column content 
+    num_columns = len(columns_info) #Number of columns 
+    column_names = [col[1] for col in columns_info]
+    print("Columns in SQL Table:", column_names)  # Prints all the columns in the SQL table
+    cursor.execute("SELECT * FROM metadata_raw LIMIT 10")  # Check data is inserted correctly, selecting the first 10 rows
+    rows = cursor.fetchall()
+    for row in rows:
+        print(row)  # Displays first 10 rows
+
+    cursor.execute("SELECT COUNT(*) FROM metadata_raw")
+    row_count = cursor.fetchone()[0]  # Displays 1st entry in rows
+    print(f"Total rows in metadata_raw: {row_count}")  # Count of the number of rows
+
+    # Get missing values per column
+    missing_values = {}
+    for col in column_names:
+        cursor.execute(f"SELECT COUNT(*) FROM metadata_raw WHERE {col} IS NULL;")
+        missing_values[col] = cursor.fetchone()[0]
+
+    # Get unique values per column
+    unique_values = {}
+    for col in column_names:
+        cursor.execute(f"SELECT COUNT(DISTINCT {col}) FROM metadata_raw;")
+        unique_values[col] = cursor.fetchone()[0]
+
+    # Store all metadata
+    metadata_info = {
+        "Number of rows": row_count,
+        "Number of columns": num_columns,
+        "Column names": column_names,
+        "Missing values per column": missing_values,
+        "Unique values per column": unique_values
+    }
+    # Print dataset information
+    print(metadata_info)
+
+metadata_basic_df = basic_metadata_information(csv_path)
+print(metadata_basic_df)
+
+#optimize~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+#Optimize~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Data cleaning in SQL ~~~~~~~~~~~~~~~~~~~~~~~~~#
+#optimize~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+
+#~~~ Accession ~~~#
+    #All unique entries and correct number - Complete.
+
+#~~~ Region ~~~# - EXCLUDING!!
+    # Messed up in the regions - Why Asia (broad) and then UK (Country)
+    # Explain that UK* might include entries from Ireland and Wales.
+    # Going to exclude - Not providing accurate information and countries incorrectly assigned
+
+#~~ Year ~~#
+    # Fine - Nothing needs doing.
+
+#~~~ Country ~~~#
+    #Rename N to UK*
+    #Fix data entry mistakes: Renaming Portgual to Portugal, and Philipines to Philippines
+
+
+import sqlite3
+#conn = sqlite3.connect("metadata_cleaned.db", timeout=10)
+#cursor = conn.cursor()
+
+def sql_data_cleaning():
+    """ This function is for data cleaning steps, including:
+    1: Incorrect data entry in the countries column - Portugal, Philippines, and N
+    2: PT - Converted untypable, #N/A, and Blanks into Ambigious data for later removal
+    3: Stx - Converted " " into Blanks for later removal. "-" renamed to No toxin, Stx entries with multiple names converted into standardised formatting.
+    """
+    print("Start SQL data cleaning...")
+
+    #Fixing incorrect spellings in Country field
+    cursor.execute("UPDATE metadata_raw SET Country = 'Philippines' WHERE Country = 'Philipines';") #In Country field, replace the misspelling
+    cursor.execute("UPDATE metadata_raw SET Country = 'Portugal' WHERE Country = 'Portgual';") #In Country field, replace the misspelling
+    cursor.execute("UPDATE metadata_raw SET Country = '*United Kingdom' WHERE TRIM(Country) = 'N';") #In Country field, replaced N with UK*
+    conn.commit()
+    print("Country names cleaned")
+
+    cursor.execute("UPDATE metadata_raw SET PT = 'Blank' WHERE PT IS NULL OR TRIM(PT) = '';") #Replace NULL (NaN) with 'Blanks'
+    cursor.execute("UPDATE metadata_raw SET PT = TRIM(PT);") #Trim leading and trailing spaces
+    cursor.execute("UPDATE metadata_raw SET PT = 'Ambiguous data' WHERE PT IN ('untypable', '#N/A', 'Blank');") #Replace specific values with 'AMBIGUOUS data
+    conn.commit()
+    print("PT columns cleaned")
+
+    # Verify the changes
+    cursor.execute("SELECT PT, COUNT(*) FROM metadata_raw GROUP BY PT;")
+    cleaned_PT_data = cursor.fetchall()
+    print("\nFinal PT standardisation results:")
+    for row in cleaned_PT_data:
+        print(row)  # Display standardized Stx values with their counts
+
+    #Cleans Stx column
+    cursor.execute("UPDATE metadata_raw SET Stx = 'Blank' WHERE Stx IS NULL OR TRIM(Stx) = '';") #Trim leading space and replace with "Blank"
+    cursor.execute("UPDATE metadata_raw SET Stx = 'No Toxin' WHERE Stx = ' -';")
+    conn.commit()
+    print("Stx columns cleaned")
+
+    #Standardises toxin names
+    def standardise_stx_labels():
+        """"
+        Fetches unique Stx toxin names from SQLite, sorts them alphabetically, and updates the database.
+        """
+        cursor.execute("SELECT DISTINCT Stx FROM metadata_raw WHERE Stx IS NOT NULL;")
+        stx_entries = cursor.fetchall()  # Fetch all unique Stx values
+
+        for (stx_value,) in stx_entries:
+            if stx_value not in ["Blank", "No Toxin"]: #Exclude Blank and No toxin 
+                sorted_stx = " ".join(sorted(stx_value.split()))  # Split, sort alphabetically, and rejoin to standardise the formatting for the Stx field.
+                cursor.execute("UPDATE metadata_raw SET Stx = ? WHERE Stx = ?", (sorted_stx, stx_value))
+
+        conn.commit()
+        print("Stx toxin names have been standardised.")
+
+    # Run the function
+    standardise_stx_labels()
+
+    # Verify the changes
+    cursor.execute("SELECT Stx, COUNT(*) FROM metadata_raw GROUP BY Stx;")
+    cleaned_stx_data = cursor.fetchall()
+    print("\nFinal Stx standardisation results:")
+    for row in cleaned_stx_data:
+        print(row)  # Display standardized Stx values with their counts
+
+    print("SQL data cleaning complete")
+
+    cursor.execute(
+        "SELECT * FROM metadata_raw LIMIT 40")
+    rows = cursor.fetchall()
+    for row in rows:
+        print(row)  # Displays first 30 rows
+    conn.commit()
+
+    print("gets this far..")
+
+    # Optimize ~~~ Removing certain variables as they only make up <5% of PT ~~~#
+    # Delete rows where PT is blank or "Ambiguous data"
+    cursor.execute("DELETE FROM metadata_raw WHERE PT IN ('Blank','Ambiguous data');")
+    cursor.execute("DELETE FROM metadata_raw WHERE Stx = 'Blank';")
+    conn.commit()
+    print("Rows with Blanks or Ambiguous data in PT or Stx have been deleted.")
+
+
+    # Count remaining rows to confirm
+    cursor.execute("SELECT COUNT(*) FROM metadata_raw;")
+    total_remaining = cursor.fetchone()[0]
+    print(f"\n Total remaining rows in metadata_raw: {total_remaining}")
+
+    #Output: There are 80 rows that are removed.
+    #This comprises 62 Blanks from Stx, and 22 Ambigious data from PT (with 4 that have overlap of both)
+
+sql_data_cleaning()
+
+# Convert the cleaned SQL table back into a DataFrame
+metadata_cleaned = pd.read_sql_query("SELECT * FROM metadata_raw;", conn)
+
+conn.close()
+
+#~~ Enable WAL mode to prevent locking issues
+#cursor.execute("PRAGMA journal_mode = 'wal';")
+#conn.commit()
+
+# Print shape to verify row removal
+print(f"Data after cleaning: {metadata_cleaned.shape}")
