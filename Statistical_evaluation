@@ -1,0 +1,74 @@
+#optimize ~~~~~~~~~~~~ Evaluating the Data distribution (Statistical interpretation) ~~~~#
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy.stats import chi2_contingency, skew
+
+# Calculate variance for categorical distributions
+variance_summary = {
+    "Country Variance": np.var(metadata_cleaned["Country"].value_counts()),
+    "Stx Variance": np.var(metadata_cleaned["Stx"].value_counts()),
+    "PT Variance": np.var(metadata_cleaned["PT"].value_counts()),
+    "Region Variance": np.var(metadata_cleaned["Region"].value_counts())
+}
+
+# Calculate Shannon entropy for Stx and PT
+# Entropy formula: H(X) = -sum(p(x) * log(p(x))) for all classes x
+#stx_entropy = entropy(stx_distribution, base=2)
+#pt_entropy = entropy(pt_distribution, base=2)
+
+# Step 2: Calculate Entropy (Measure of Diversity in Categorical Distributions)
+# Entropy formula: H(X) = -sum(p(x) * log(p(x))) for all classes x
+
+from scipy.stats import skew, chi2_contingency
+
+# Function to calculate Shannon Entropy
+def shannon_entropy(series):
+    value_counts = series.value_counts(normalize=True)
+    return entropy(value_counts, base=2)  # # Log base 2 for better interpretability
+
+# Function to calculate Gini Index
+def gini_index(series):
+    value_counts = series.value_counts(normalize=True)
+    return 1 - np.sum(value_counts**2)
+
+# Function to calculate Imbalance Ratio
+def imbalance_ratio(series):
+    counts = series.value_counts()
+    return counts.max() / counts.min() if counts.min() > 0 else np.inf
+
+# Function to calculate F1-score (Approximation for class balance evaluation)
+def f1_score_approx(series):
+    counts = series.value_counts()
+    return 2 * (counts.min() * counts.max()) / (counts.min() + counts.max()) if counts.min() > 0 else 0
+
+# Function to calculate Chi-Square test for categorical relationships
+def chi_square_test(df, col1, col2):
+    contingency_table = pd.crosstab(df[col1], df[col2])
+    chi2, p, _, _ = chi2_contingency(contingency_table)
+    return {"Chi2": chi2, "p-value": p}
+
+# Calculate statistical measures for categorical variables
+stats_summary = {}
+columns_to_analyze = ["Country", "Region", "Stx", "PT"]
+
+for col in columns_to_analyze:
+    stats_summary[col] = {
+        "Shannon Entropy": shannon_entropy(metadata_cleaned[col]),
+        "Gini Index": gini_index(metadata_cleaned[col]),
+        "Imbalance Ratio": imbalance_ratio(metadata_cleaned[col]),
+        "F1 Score Approx": f1_score_approx(metadata_cleaned[col]),
+        "Skewness": skew(metadata_cleaned[col].value_counts())  # Using count distribution skewness
+    }
+
+# Calculate Chi-Square test for categorical relationships
+chi_square_results = {}
+categorical_pairs = [("Country", "PT"), ("Country", "Stx"), ("PT", "Stx"), ("Country", "Region")]
+
+for pair in categorical_pairs:
+    chi_square_results[f"{pair[0]} vs {pair[1]}"] = chi_square_test(metadata_cleaned, pair[0], pair[1])
+
+# Display the statistical summary and chi-square test results
+print(chi_square_results)
+print(stats_summary)
+
+
