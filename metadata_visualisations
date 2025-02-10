@@ -1,0 +1,114 @@
+#~~~~~~~~~~~~~ Visualisations ~~~~~~~~~~~~~~~~#
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+
+# Use a colorblind-friendly palette
+colorblind_palette = sns.color_palette("colorblind")
+
+# Sorting data by frequency in descending order
+sorted_log_country_counts = log_country_counts.sort_values(ascending=False)
+sorted_log_stx_counts = log_stx_counts.sort_values(ascending=False)
+sorted_log_pt_counts = log_pt_counts.sort_values(ascending=False)
+
+# Highlighting UK as the highest percentage representation
+highlight_color = "grey"
+
+# Generate color gradients for colorblind-friendly palettes
+def get_color_gradient(values, base_palette):
+    normalized_values = (values - values.min()) / (values.max() - values.min())  # Normalize
+    cmap = sns.color_palette(base_palette, as_cmap=True)  # Use Seaborn's colorblind palette
+    return [cmap(val) for val in normalized_values]  # Generate colors
+
+# Generate color gradients for each plot
+country_colors = get_color_gradient(sorted_log_country_counts, "cividis")
+stx_colors = get_color_gradient(sorted_log_stx_counts, "magma")
+pt_colors = get_color_gradient(sorted_log_pt_counts, "viridis")
+
+# Highlight the UK specifically in the Country Distribution
+def highlight_uk_colors(category, colors):
+    return [highlight_color if cat == "*United Kingdom" else colors[i] for i, cat in enumerate(category)]
+
+country_colors = highlight_uk_colors(sorted_log_country_counts.index, country_colors)
+
+# Prepare figure
+fig, axes = plt.subplots(2, 2, figsize=(18, 10))
+
+# Function to overlay stats without titles
+def overlay_stats(ax, stat_values):
+    stats_text = (f"Entropy: {stat_values['Shannon Entropy']:.2f}\n"
+                  f"Gini: {stat_values['Gini Index']:.2f}\n"
+                  f"Imbalance Ratio: {stat_values['Imbalance Ratio']:.2f}\n"
+                  f"F1 Score: {stat_values['F1 Score Approx']:.2f}")
+
+    # Position text box outside the bars
+    ax.text(0.97, 0.90, stats_text, transform=ax.transAxes, fontsize=12, verticalalignment="top",
+            horizontalalignment="right",
+            bbox=dict(boxstyle="round,pad=0.3", edgecolor="black", facecolor="white", alpha=0.8))
+
+# Country Distribution
+sns.barplot(x=sorted_log_country_counts.index, y=sorted_log_country_counts.values, ax=axes[0, 0],
+            palette=country_colors, capsize=0.1)
+axes[0, 0].axhline(country_mean, linestyle="dashed", color="black", label="Mean Count")
+axes[0, 0].set_ylabel("Log2 Transformed Raw Country Frequency Counts", fontsize=12, fontweight="bold")
+axes[0, 0].tick_params(axis="x", rotation=45)
+overlay_stats(axes[0, 0], stats_summary["Country"])
+
+# Stx Distribution
+sns.barplot(x=sorted_log_stx_counts.index, y=sorted_log_stx_counts.values, ax=axes[0, 1], palette=stx_colors,
+            capsize=0.1)
+axes[0, 1].axhline(stx_mean, linestyle="dashed", color="black", label="Mean Count")
+axes[0, 1].set_ylabel("Log2 Transformed Raw Stx Frequency Counts", fontsize=12, fontweight="bold")
+axes[0, 1].tick_params(axis="x", rotation=45)
+overlay_stats(axes[0, 1], stats_summary["Stx"])
+
+# PT Distribution
+sns.barplot(x=sorted_log_pt_counts.index, y=sorted_log_pt_counts.values, ax=axes[1, 0], palette=pt_colors, capsize=0.1)
+axes[1, 0].axhline(pt_mean, linestyle="dashed", color="black", label="Mean Count")
+axes[1, 0].set_ylabel("Log2 Transformed Raw PT Frequency Counts", fontsize=12, fontweight="bold")
+axes[1, 0].tick_params(axis="x", rotation=45)
+overlay_stats(axes[1, 0], stats_summary["PT"])
+
+# Region Distribution
+if "log_region_counts" in locals():
+    sorted_log_region_counts = log_region_counts.sort_values(ascending=False)
+    region_colors = get_color_gradient(sorted_log_region_counts, "viridis")
+    sns.barplot(x=sorted_log_region_counts.index, y=sorted_log_region_counts.values, ax=axes[1, 1],
+                palette=region_colors, capsize=0.1)
+    axes[1, 1].axhline(region_mean, linestyle="dashed", color="black", label="Mean Count")
+    axes[1, 1].set_ylabel("Log2 Transformed Raw Region Frequency Counts", fontsize=12, fontweight="bold")
+    axes[1, 1].tick_params(axis="x", rotation=45)
+    overlay_stats(axes[1, 1], stats_summary["Region"])
+else:
+    axes[1, 1].axis("off")  # Hide empty subplot if data is missing
+
+# Make axes labels bold
+for ax in axes.flat:
+    ax.xaxis.label.set_fontsize(12)
+    ax.xaxis.label.set_fontweight("bold")
+    ax.yaxis.label.set_fontsize(12)
+    ax.yaxis.label.set_fontweight("bold")
+
+# Remove background frame (despine)
+sns.despine()
+
+plt.tight_layout()
+plt.show()
+
+#~~~~~~~~~~~~~~~~ Figure 2 ~~~~~~~~~~~~~~~~~~~#
+# Heatmap of Stx Type by Country (Top 15 Countries)
+top_countries_list = metadata_cleaned['Country'].value_counts().head(15).index
+df = metadata_cleaned[metadata_cleaned['Country'].isin(top_countries_list)]
+
+# Create a pivot table for heatmap
+heatmap_data = df.pivot_table(index="Country", columns="Stx", aggfunc="size", fill_value=0)
+
+# Plot heatmap
+plt.figure(figsize=(12, 8))
+sns.heatmap(heatmap_data, cmap="Blues", annot=True, fmt="d", linewidths=0.5)
+plt.title("Heatmap of Stx Type Distribution by Country (Top 15 Countries)")
+plt.xlabel("Stx Type")
+plt.ylabel("Country")
+
+plt.show()
+
