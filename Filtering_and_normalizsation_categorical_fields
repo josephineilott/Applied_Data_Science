@@ -1,0 +1,174 @@
+# ~~Distribution of categorical fields ~~#
+#print(metadata_cleaned['Stx'].unique()) # Shows what the unique values are.
+#print(f"\n Counts of unique values/distribution of field in the 'Stx' column:{metadata_cleaned['Stx'].value_counts()}")
+#Prints the counts of the unique values in the columns
+
+#print(metadata_cleaned['Region'].unique()) #todo~~~~!!!
+#print(f"\n Counts of unique values in the 'Region' column:{metadata_cleaned['Region'].value_counts()}")
+    #Prints the counts of the unique values in the columns
+
+#print(metadata_cleaned['Country'].unique())
+#print(f"\n Counts of unique values in the 'Country' column:{metadata_cleaned['Country'].value_counts()}")
+    #Prints the counts of the unique values in the columns
+    # OR country_distribution = data.groupby('Country')
+
+#print(metadata_cleaned['PT'].unique())
+#print(f"\n Counts of unique values in the 'PT' column:{metadata_cleaned['PT'].value_counts()}")
+    #Prints the counts of the unique values in the columns
+
+#~~ Summary of numerical field ~~~#
+#year_summary = metadata_cleaned["Year"].unique()
+#print(f"\n Counts of unique values in the 'Year' column:{metadata_cleaned['Year'].value_counts()}")
+    #Prints the counts of the unique values in the columns
+
+# Print Unique Country Values & Value Counts
+#print("\nUpdated Country Field Unique Values:", metadata_cleaned['Country'].unique())
+#print("\nCounts of Unique Values in 'Country' Column:")
+#print(metadata_cleaned['Country'].value_counts())
+
+# Get class distribution statistics
+evaluation_summary = {
+    "Country": {
+        "Total Classes": metadata_cleaned["Country"].nunique(),
+        "Top Class Count": metadata_cleaned["Country"].value_counts().max(),
+        "Bottom Class Count": metadata_cleaned["Country"].value_counts().min()
+    },
+    "Region": {
+        "Total Classes": metadata_cleaned["Region"].nunique(),
+        "Top Class Count": metadata_cleaned["Region"].value_counts().max(),
+        "Bottom Class Count": metadata_cleaned["Region"].value_counts().min()
+    },
+    "Stx": {
+        "Total Classes": metadata_cleaned["Stx"].nunique(),
+        "Top Class Count": metadata_cleaned["Stx"].value_counts().max(),
+        "Bottom Class Count": metadata_cleaned["Stx"].value_counts().min()
+    },
+    "PT": {
+        "Total Classes": metadata_cleaned["PT"].nunique(),
+        "Top Class Count": metadata_cleaned["PT"].value_counts().max(),
+        "Bottom Class Count": metadata_cleaned["PT"].value_counts().min()
+    },
+    "Year": {
+        "Total classes": metadata_cleaned["Year"].nunique(),
+        "Top Class Count": metadata_cleaned["Year"].value_counts().max(),
+        "Bottom Class Count": metadata_cleaned["Year"].value_counts().min()
+    }
+}
+print(evaluation_summary)
+
+# Filter Out Rare Categories
+def country_filtering():
+    #Group low-frequency countries into "Other" <10 entries
+    low_freq_countries = metadata_cleaned["Country"].value_counts()[metadata_cleaned["Country"].value_counts() < 10].index
+    metadata_cleaned["Country"] = metadata_cleaned["Country"].replace(low_freq_countries, "Other")
+    print("\nUnique countries:")
+    print(metadata_cleaned["Country"].value_counts())
+country_filtering()
+#Only countries with more than 10 samples are included, others into an "Other" column
+
+min_samples = 5
+# Filter Stx Types
+stx_counts = metadata_cleaned["Stx"].value_counts()
+valid_stx = stx_counts[stx_counts >= min_samples].index
+metadata_cleaned = metadata_cleaned[metadata_cleaned["Stx"].isin(valid_stx)]
+
+# Filter PT (Phage Type)
+pt_counts = metadata_cleaned["PT"].value_counts()
+valid_pt = pt_counts[pt_counts >= min_samples].index
+metadata_cleaned = metadata_cleaned[metadata_cleaned["PT"].isin(valid_pt)]
+
+#section ~~~~~~~~~~Visualizing the distribution of the "Year" column ~~~~~~~~~~~~~~#
+plt.figure(figsize=(8, 5))
+sns.histplot(metadata_cleaned["Year"], bins=10, kde=True)
+plt.title("Distribution of Year Values")
+plt.xlabel("Year")
+plt.ylabel("Frequency")
+plt.show()
+
+# Checking skewness to determine the need for log transformation
+year_skewness = metadata_cleaned["Year"].skew()
+print(year_skewness)
+
+#optimize~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+#Optimize~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Normalisation ~~~~~~~~~~~~~~~~~~~~~~~~~#
+#optimize~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+
+#MAYBE...
+#Year: Min-Max Scaling is suitable since the data is already nearly normal.
+#Categorical Features (after frequency encoding): Normalize by dividing each frequency by total frequency per year (Relative Frequency).
+
+# Calculate Frequency Counts for Country, PT, and Stx Columns
+country_freq = metadata_cleaned["Country"].value_counts()
+pt_freq = metadata_cleaned["PT"].value_counts()
+stx_freq = metadata_cleaned["Stx"].value_counts()
+region_freq = metadata_cleaned["Region"].value_counts()
+
+# Map Frequency Counts Back to the DataFrame
+metadata_cleaned["Country_Freq"] = metadata_cleaned["Country"].map(country_freq)
+metadata_cleaned["PT_Freq"] = metadata_cleaned["PT"].map(pt_freq)
+metadata_cleaned["Stx_Freq"] = metadata_cleaned["Stx"].map(stx_freq)
+metadata_cleaned["Region_Freq"] = metadata_cleaned["Region"].map(region_freq)
+
+# Calculate Relative Frequency Per Year
+metadata_cleaned["Country_RelFreq"] = metadata_cleaned.groupby("Year")["Country_Freq"].transform(lambda x: x / x.sum())
+metadata_cleaned["PT_RelFreq"] = metadata_cleaned.groupby("Year")["PT_Freq"].transform(lambda x: x / x.sum())
+metadata_cleaned["Stx_RelFreq"] = metadata_cleaned.groupby("Year")["Stx_Freq"].transform(lambda x: x / x.sum())
+metadata_cleaned["Region_RelFreq"] = metadata_cleaned.groupby("Year")["Region_Freq"].transform(lambda x: x / x.sum())
+
+#optimize~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+#Optimize~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Log transformation ~~~~~~~~~~~~~~~~~~~~~~~~~#
+#optimize~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+
+#Section ~~~~ Use two different log transformation approaches ~~~~#
+    # 1: First approach using computed frequency counts, normalize total occurrence per year (relative frequency)
+    # then log1p() transform ==> This is used for Time-dependent analysis (trends in country/stx/PT distribution across years).
+    # Ensure direct comparison between years
+
+    # 2: Second approach - Log transforming the raw frequency counts
+    # Compute raw frequency counts for country, PT and Stx THEN apply log2(x+1) transformation directly to frequency counts
+    # Not normalizing per year, transforming absolute count
+    # Log2 scaling reduces the effect of large category counts (e.g., UK appearing 2000+ times).
+    # More suitable when you don’t need time-based normalization.
+
+#Optimize ~~~~~~~~ Approach 1: Relative frequency log transformation ~~~~#
+#Apply Log Transformation (Log1p to handle zero values)
+metadata_cleaned["Country_RelFreq_Log"] = np.log1p(metadata_cleaned["Country_RelFreq"])
+metadata_cleaned["PT_RelFreq_Log"] = np.log1p(metadata_cleaned["PT_RelFreq"])
+metadata_cleaned["Stx_RelFreq_Log"] = np.log1p(metadata_cleaned["Stx_RelFreq"])
+metadata_cleaned["Region_RelFreq_Log"] = np.log1p(metadata_cleaned["Region_RelFreq"])
+
+#Optimize ~~~~~~ Approach 2: Log transformation with raw frequency counts ~~~~~#
+#Highlights the overall importance of each category rather than yearly trends.
+
+# Log2 Transformations for Visualization
+log_country_counts = np.log2(metadata_cleaned["Country"].value_counts() + 1)
+log_stx_counts = np.log2(metadata_cleaned["Stx"].value_counts() + 1)
+log_pt_counts = np.log2(metadata_cleaned["PT"].value_counts() + 1)
+log_region_counts = np.log2(metadata_cleaned["Region"].value_counts() + 1)
+
+# Map these values back to the dataframe
+metadata_cleaned["Country_LogRaw"] = metadata_cleaned["Country"].map(log_country_counts)
+metadata_cleaned["PT_LogRaw"] = metadata_cleaned["PT"].map(log_pt_counts)
+metadata_cleaned["Stx_LogRaw"] = metadata_cleaned["Stx"].map(log_stx_counts)
+metadata_cleaned["Region_LogRaw"] = metadata_cleaned["Region"].map(log_region_counts)
+
+# Display the processed DataFrame
+import matplotlib.pyplot as plt
+
+# Going to round to 3 dp for the viewing the table
+metadata_cleaned_rounded = metadata_cleaned.copy()
+numeric_cols = metadata_cleaned_rounded.select_dtypes(include=['float64', 'int64']).columns
+metadata_cleaned_rounded[numeric_cols] = metadata_cleaned_rounded[numeric_cols].round(3)
+
+# Display the first few rows as a table visualization
+plt.figure(figsize=(12, 4))
+plt.axis('off')
+table = plt.table(cellText=metadata_cleaned_rounded.head(10).values,
+                  colLabels=metadata_cleaned_rounded.columns,
+                  cellLoc='center',
+                  loc='center')
+table.auto_set_font_size(False)
+table.set_fontsize(8)
+table.scale(1.2, 1.2)
+plt.title("First 10 Rows of Processed Metadata", fontsize=12)
+plt.show()
